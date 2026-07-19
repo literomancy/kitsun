@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import type { TelegramUser } from "../lib/telegram";
 
 type Tab = "Главная" | "Каталог" | "Покупки" | "Профиль";
 type Product = { id: string; title: string; type: string; price: string; color: "pink" | "blue" | "lime"; mark: string };
@@ -28,6 +29,7 @@ export default function Home() {
   const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [customOrderOpen, setCustomOrderOpen] = useState(false);
   const [insideTelegram, setInsideTelegram] = useState(false);
+  const [telegramUser, setTelegramUser] = useState<TelegramUser | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -54,6 +56,14 @@ export default function Home() {
     setTab(nextTab);
   };
 
+  const openCart = () => {
+    setSelected(null);
+    setCheckoutOpen(false);
+    setFavoritesOpen(false);
+    setCustomOrderOpen(false);
+    setCartOpen(true);
+  };
+
   const hasInnerScreen = Boolean(selected || cartOpen || checkoutOpen || favoritesOpen || customOrderOpen);
 
   useEffect(() => {
@@ -66,6 +76,13 @@ export default function Home() {
       setInsideTelegram(isTelegram);
       if (!isTelegram) return;
 
+      document.documentElement.classList.add("telegram-app");
+      WebApp.setHeaderColor("#ffffff");
+      WebApp.setBackgroundColor("#ffffff");
+      if ("setBottomBarColor" in WebApp && typeof WebApp.setBottomBarColor === "function") {
+        WebApp.setBottomBarColor("#ffffff");
+      }
+
       const goBack = () => {
         if (favoritesOpen) setFavoritesOpen(false);
         else if (customOrderOpen) setCustomOrderOpen(false);
@@ -75,6 +92,14 @@ export default function Home() {
       };
 
       WebApp.ready();
+      if (!telegramUser) fetch("/api/telegram/auth", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ initData: WebApp.initData }),
+      })
+        .then((response) => response.ok ? response.json() : Promise.reject())
+        .then((data: { user: TelegramUser }) => { if (active) setTelegramUser(data.user); })
+        .catch(() => { if (active) setTelegramUser(null); });
       WebApp.BackButton.offClick(goBack);
       WebApp.BackButton.onClick(goBack);
       if (hasInnerScreen) WebApp.BackButton.show();
@@ -91,27 +116,30 @@ export default function Home() {
     };
   }, [cartOpen, checkoutOpen, customOrderOpen, favoritesOpen, hasInnerScreen, selected]);
 
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+    document.querySelector<HTMLElement>(".sheet")?.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [cartOpen, checkoutOpen, customOrderOpen, favoritesOpen, selected, tab]);
+
   if (selected) {
-    return <main className={`shell standalone-shell ${insideTelegram ? "telegram-native" : ""}`}><ProductSheet product={products.find((product) => product.id === selected)!} onClose={() => setSelected(null)} onAdd={addToCart} /><BottomNav tab="Каталог" onSelect={navigate} />{notice && <div className="toast" role="status">{notice}</div>}</main>;
+    return <main className={`shell standalone-shell ${insideTelegram ? "telegram-native" : ""}`}><ProductSheet product={products.find((product) => product.id === selected)!} onClose={() => setSelected(null)} onAdd={addToCart} /><FloatingCart count={cart.length} onOpen={openCart} /><BottomNav tab="Каталог" onSelect={navigate} />{notice && <div className="toast" role="status">{notice}</div>}</main>;
   }
 
   if (cartOpen) {
-    return <main className={`shell standalone-shell ${insideTelegram ? "telegram-native" : ""}`}><CartSheet items={cart} onClose={() => setCartOpen(false)} onRemove={(id) => setCart((items) => items.filter((item) => item.id !== id))} onCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }} /><BottomNav tab={tab} onSelect={navigate} /></main>;
+    return <main className={`shell standalone-shell ${insideTelegram ? "telegram-native" : ""}`}><CartSheet items={cart} onClose={() => setCartOpen(false)} onRemove={(id) => setCart((items) => items.filter((item) => item.id !== id))} onCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }} /><FloatingCart count={cart.length} onOpen={openCart} active /><BottomNav tab={tab} onSelect={navigate} /></main>;
   }
 
   if (checkoutOpen) {
-    return <main className={`shell standalone-shell ${insideTelegram ? "telegram-native" : ""}`}><CheckoutSheet items={cart} onClose={() => { setCheckoutOpen(false); setCartOpen(true); }} onComplete={() => { setPurchases((current) => [...current, ...cart.filter((item) => !current.some((saved) => saved.id === item.id))]); setCart([]); }} onViewPurchases={() => { setCheckoutOpen(false); setTab("Покупки"); }} /></main>;
+    return <main className={`shell standalone-shell ${insideTelegram ? "telegram-native" : ""}`}><CheckoutSheet items={cart} onClose={() => { setCheckoutOpen(false); setCartOpen(true); }} onComplete={() => { setPurchases((current) => [...current, ...cart.filter((item) => !current.some((saved) => saved.id === item.id))]); setCart([]); }} onViewPurchases={() => { setCheckoutOpen(false); setTab("Покупки"); }} /><FloatingCart count={cart.length} onOpen={openCart} /></main>;
   }
 
   return (
     <main className={`shell ${insideTelegram ? "telegram-native" : ""}`}>
-      <header className="header">
+      {tab === "Главная" && <header className="header">
         <a className="wordmark" href="#top" aria-label="KITSUN, главная">KITSUN<span>®</span></a>
-        <div className="header-actions">
-          <button className="round-button" aria-label="Поиск"><Icon name="search" /></button>
-          <button className="round-button cart" aria-label="Корзина" onClick={() => setCartOpen(true)}><Icon name="bag" />{cart.length > 0 && <i>{cart.length}</i>}</button>
-        </div>
-      </header>
+      </header>}
+
+      <FloatingCart count={cart.length} onOpen={openCart} />
 
       {tab === "Главная" && <>
         <section className="hero" id="top">
@@ -149,7 +177,7 @@ export default function Home() {
 
       {tab === "Каталог" && <Catalog products={products} onOpen={setSelected} favorites={favorites} onToggleFavorite={toggleFavorite} />}
       {tab === "Покупки" && <Purchases items={purchases} onBrowse={() => setTab("Каталог")} />}
-      {tab === "Профиль" && <Profile purchaseCount={purchases.length} favoriteCount={favorites.length} onOpenFavorites={() => setFavoritesOpen(true)} onSupport={() => setNotice("Откроем чат поддержки в Telegram")} />}
+      {tab === "Профиль" && <Profile purchaseCount={purchases.length} favoriteCount={favorites.length} telegramUser={telegramUser} onOpenFavorites={() => setFavoritesOpen(true)} onSupport={() => setNotice("Откроем чат поддержки в Telegram")} />}
 
       <BottomNav tab={tab} onSelect={navigate} />
 
@@ -162,6 +190,10 @@ export default function Home() {
 
 function BottomNav({ tab, onSelect }: { tab: Tab; onSelect: (tab: Tab) => void }) {
   return <nav className="bottom-nav" aria-label="Основная навигация">{(["Главная", "Каталог", "Покупки", "Профиль"] as Tab[]).map((item, index) => <button key={item} className={tab === item ? "active" : ""} onClick={() => onSelect(item)}><span><Icon name={(["home", "grid", "download", "user"] as const)[index]} /></span>{item}</button>)}</nav>;
+}
+
+function FloatingCart({ count, onOpen, active = false }: { count: number; onOpen: () => void; active?: boolean }) {
+  return <button className={`floating-cart ${active ? "active" : ""}`} aria-label={`Корзина, товаров: ${count}`} onClick={onOpen}><Icon name="bag" />{count > 0 && <i>{count}</i>}</button>;
 }
 
 function ProductCard({ product, onOpen, favorite, onToggleFavorite }: { product: Product; onOpen: (id: string) => void; favorite: boolean; onToggleFavorite: (id: string) => void }) {
@@ -185,7 +217,7 @@ function Catalog({ products, onOpen, favorites, onToggleFavorite }: { products: 
 }
 
 function EmptyState({ icon, title, copy }: { icon: string; title: string; copy: string }) { return <section className="empty"><div>{icon}</div><h1>{title}</h1><p>{copy}</p></section>; }
-function Profile({ purchaseCount, favoriteCount, onOpenFavorites, onSupport }: { purchaseCount: number; favoriteCount: number; onOpenFavorites: () => void; onSupport: () => void }) { return <section className="profile"><p className="eyebrow">АККАУНТ</p><div className="avatar">K</div><h1>ГОСТЬ</h1><p>Войдите через Telegram, чтобы синхронизировать покупки и избранное.</p><button className="profile-button">ОТКРЫТЬ В TELEGRAM ↗</button><div className="profile-stats"><div><strong>{purchaseCount}</strong><span>ПОКУПКИ</span></div><button onClick={onOpenFavorites}><strong>{favoriteCount}</strong><span>ИЗБРАННОЕ →</span></button></div><div className="profile-links"><button onClick={onSupport}>Поддержка <span>→</span></button><button>Условия использования <span>→</span></button></div></section>; }
+function Profile({ purchaseCount, favoriteCount, telegramUser, onOpenFavorites, onSupport }: { purchaseCount: number; favoriteCount: number; telegramUser: TelegramUser | null; onOpenFavorites: () => void; onSupport: () => void }) { const displayName = telegramUser ? [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ") : "ГОСТЬ"; const initial = displayName.charAt(0).toUpperCase(); return <section className="profile"><p className="eyebrow">АККАУНТ</p><div className="avatar">{initial}</div><h1>{displayName}</h1>{telegramUser ? <p>{telegramUser.username ? `@${telegramUser.username}` : `Telegram ID ${telegramUser.id}`}</p> : <p>Откройте приложение через Telegram, чтобы синхронизировать покупки и избранное.</p>} {!telegramUser && <button className="profile-button">ОТКРЫТЬ В TELEGRAM ↗</button>}<div className="profile-stats"><div><strong>{purchaseCount}</strong><span>ПОКУПКИ</span></div><button onClick={onOpenFavorites}><strong>{favoriteCount}</strong><span>ИЗБРАННОЕ →</span></button></div><div className="profile-links"><button onClick={onSupport}>Поддержка <span>→</span></button><button>Условия использования <span>→</span></button></div></section>; }
 
 function Purchases({ items, onBrowse }: { items: CartItem[]; onBrowse: () => void }) {
   const [downloaded, setDownloaded] = useState<string[]>([]);
