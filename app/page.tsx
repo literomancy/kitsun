@@ -4,19 +4,20 @@ import { useEffect, useState } from "react";
 import type { TelegramUser } from "../lib/telegram";
 
 type Tab = "Главная" | "Каталог" | "Покупки" | "Профиль";
-type Product = { id: string; title: string; type: string; price: string; color: "pink" | "blue" | "lime"; mark: string };
+type CatalogCategory = "all" | "digital" | "accessories" | "merch";
+type Product = { id: string; title: string; type: string; category: CatalogCategory; price: string; color: "pink" | "blue" | "lime"; mark: string };
 type CartItem = Product & { unitPrice: number };
 
 const products: Product[] = [
-  { id: "01", title: "MELTED ORBIT", type: "Принт · PNG, PSD", price: "2 400 ₽", color: "pink", mark: "PRINT" },
-  { id: "02", title: "MOTOR STUDY", type: "Исходник · AI, SVG", price: "3 200 ₽", color: "blue", mark: "VECTOR" },
-  { id: "03", title: "TERRAIN 004", type: "Набор · PNG, TIFF", price: "1 800 ₽", color: "lime", mark: "PACK" },
+  { id: "01", title: "MELTED ORBIT", type: "Принт · PNG, PSD", category: "digital", price: "2 400 ₽", color: "pink", mark: "PRINT" },
+  { id: "02", title: "MOTOR STUDY", type: "Аксессуар · В наличии", category: "accessories", price: "3 200 ₽", color: "blue", mark: "OBJECT" },
+  { id: "03", title: "TERRAIN 004", type: "Мерч · Предзаказ", category: "merch", price: "1 800 ₽", color: "lime", mark: "DROP" },
 ];
 
 const categories = [
-  ["01", "ЦИФРОВЫЕ\nТОВАРЫ", "Файлы для одежды и товаров"],
-  ["02", "АКСЕССУАРЫ", "Дополнения для вашего продукта"],
-  ["03", "МЕРЧ", "Редкие дропы KITSUN"],
+  ["01", "ЦИФРОВЫЕ\nТОВАРЫ", "Файлы для одежды и товаров", "digital"],
+  ["02", "АКСЕССУАРЫ", "Дополнения для вашего продукта", "accessories"],
+  ["03", "МЕРЧ", "Редкие дропы KITSUN", "merch"],
 ] as const;
 
 export default function Home() {
@@ -28,8 +29,10 @@ export default function Home() {
   const [favorites, setFavorites] = useState<string[]>([]);
   const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [customOrderOpen, setCustomOrderOpen] = useState(false);
+  const [aboutOpen, setAboutOpen] = useState(false);
   const [insideTelegram, setInsideTelegram] = useState(false);
   const [telegramUser, setTelegramUser] = useState<TelegramUser | null>(null);
+  const [catalogCategory, setCatalogCategory] = useState<CatalogCategory>("all");
   const [selected, setSelected] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
@@ -53,6 +56,8 @@ export default function Home() {
     setCheckoutOpen(false);
     setFavoritesOpen(false);
     setCustomOrderOpen(false);
+    setAboutOpen(false);
+    if (nextTab === "Каталог") setCatalogCategory("all");
     setTab(nextTab);
   };
 
@@ -61,10 +66,11 @@ export default function Home() {
     setCheckoutOpen(false);
     setFavoritesOpen(false);
     setCustomOrderOpen(false);
+    setAboutOpen(false);
     setCartOpen(true);
   };
 
-  const hasInnerScreen = Boolean(selected || cartOpen || checkoutOpen || favoritesOpen || customOrderOpen);
+  const hasInnerScreen = Boolean(selected || cartOpen || checkoutOpen || favoritesOpen || customOrderOpen || aboutOpen);
 
   useEffect(() => {
     let active = true;
@@ -84,7 +90,8 @@ export default function Home() {
       }
 
       const goBack = () => {
-        if (favoritesOpen) setFavoritesOpen(false);
+        if (aboutOpen) setAboutOpen(false);
+        else if (favoritesOpen) setFavoritesOpen(false);
         else if (customOrderOpen) setCustomOrderOpen(false);
         else if (checkoutOpen) { setCheckoutOpen(false); setCartOpen(true); }
         else if (selected) setSelected(null);
@@ -96,6 +103,7 @@ export default function Home() {
         method: "POST",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({ initData: WebApp.initData }),
+        credentials: "same-origin",
       })
         .then((response) => response.ok ? response.json() : Promise.reject())
         .then((data: { user: TelegramUser }) => { if (active) setTelegramUser(data.user); })
@@ -114,12 +122,21 @@ export default function Home() {
       active = false;
       cleanup?.();
     };
-  }, [cartOpen, checkoutOpen, customOrderOpen, favoritesOpen, hasInnerScreen, selected]);
+  }, [aboutOpen, cartOpen, checkoutOpen, customOrderOpen, favoritesOpen, hasInnerScreen, selected]);
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/telegram/auth", { credentials: "same-origin" })
+      .then((response) => response.ok ? response.json() : Promise.reject())
+      .then((data: { user: TelegramUser }) => { if (active) setTelegramUser(data.user); })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
 
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     document.querySelector<HTMLElement>(".sheet")?.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, [cartOpen, checkoutOpen, customOrderOpen, favoritesOpen, selected, tab]);
+  }, [aboutOpen, cartOpen, checkoutOpen, customOrderOpen, favoritesOpen, selected, tab]);
 
   if (selected) {
     return <main className={`shell standalone-shell ${insideTelegram ? "telegram-native" : ""}`}><ProductSheet product={products.find((product) => product.id === selected)!} onClose={() => setSelected(null)} onAdd={addToCart} /><FloatingCart count={cart.length} onOpen={openCart} /><BottomNav tab="Каталог" onSelect={navigate} />{notice && <div className="toast" role="status">{notice}</div>}</main>;
@@ -146,12 +163,12 @@ export default function Home() {
           <p className="eyebrow">KITSUN / DIGITAL CATALOG</p>
           <h1><span>ГОТОВО</span><span>К <em>ТИРАЖУ.</em></span></h1>
           <p className="hero-copy">Принты, исходники и дизайн-проекты для производства и маркетплейсов.</p>
-          <a className="text-link" href="#catalog">ОТКРЫТЬ КАТАЛОГ <span>↘</span></a>
+          <button className="text-link" onClick={() => setAboutOpen(true)}>О НАС <span>↘</span></button>
         </section>
 
         <section className="category-list" aria-label="Разделы магазина">
-          {categories.map(([number, title, description]) => (
-            <button key={number} className="category" onClick={() => setTab("Каталог")}>
+          {categories.map(([number, title, description, category]) => (
+            <button key={number} className="category" onClick={() => { setCatalogCategory(category); setTab("Каталог"); }}>
               <small>{number}</small>
               <strong>{title.split("\n").map((part) => <span key={part}>{part}</span>)}</strong>
               <span className="category-description">{description}</span>
@@ -161,7 +178,7 @@ export default function Home() {
         </section>
 
         <section className="section" id="catalog">
-          <div className="section-head"><p>НОВОЕ В КАТАЛОГЕ</p><button onClick={() => setTab("Каталог")}>ВСЁ →</button></div>
+          <div className="section-head"><p>НОВОЕ В КАТАЛОГЕ</p><button onClick={() => { setCatalogCategory("all"); setTab("Каталог"); }}>ВСЁ →</button></div>
           <div className="product-grid">
             {products.map((product) => <ProductCard key={product.id} product={product} onOpen={setSelected} favorite={favorites.includes(product.id)} onToggleFavorite={toggleFavorite} />)}
           </div>
@@ -175,14 +192,15 @@ export default function Home() {
         </section>
       </>}
 
-      {tab === "Каталог" && <Catalog products={products} onOpen={setSelected} favorites={favorites} onToggleFavorite={toggleFavorite} />}
+      {tab === "Каталог" && <Catalog products={products} category={catalogCategory} onCategory={setCatalogCategory} onOpen={setSelected} favorites={favorites} onToggleFavorite={toggleFavorite} />}
       {tab === "Покупки" && <Purchases items={purchases} onBrowse={() => setTab("Каталог")} />}
-      {tab === "Профиль" && <Profile purchaseCount={purchases.length} favoriteCount={favorites.length} telegramUser={telegramUser} onOpenFavorites={() => setFavoritesOpen(true)} onSupport={() => setNotice("Откроем чат поддержки в Telegram")} />}
+      {tab === "Профиль" && <Profile purchaseCount={purchases.length} favoriteCount={favorites.length} telegramUser={telegramUser} onAbout={() => setAboutOpen(true)} onOpenFavorites={() => setFavoritesOpen(true)} onSupport={() => setNotice("Откроем чат поддержки в Telegram")} />}
 
       <BottomNav tab={tab} onSelect={navigate} />
 
       {favoritesOpen && <FavoritesSheet items={products.filter((product) => favorites.includes(product.id))} onClose={() => setFavoritesOpen(false)} onRemove={toggleFavorite} onOpen={(id) => { setFavoritesOpen(false); setSelected(id); }} />}
       {customOrderOpen && <CustomOrderSheet onClose={() => setCustomOrderOpen(false)} onContact={() => setNotice("Переходим в Telegram-чат с менеджером")} />}
+      {aboutOpen && <AboutPage onClose={() => setAboutOpen(false)} />}
       {notice && <div className="toast" role="status">{notice}</div>}
     </main>
   );
@@ -203,21 +221,25 @@ function ProductCard({ product, onOpen, favorite, onToggleFavorite }: { product:
   </article>;
 }
 
-function Catalog({ products, onOpen, favorites, onToggleFavorite }: { products: Product[]; onOpen: (id: string) => void; favorites: string[]; onToggleFavorite: (id: string) => void }) {
+function Catalog({ products, category, onCategory, onOpen, favorites, onToggleFavorite }: { products: Product[]; category: CatalogCategory; onCategory: (category: CatalogCategory) => void; onOpen: (id: string) => void; favorites: string[]; onToggleFavorite: (id: string) => void }) {
   const [query, setQuery] = useState("");
-  const [kind, setKind] = useState("Все");
-  const kinds = ["Все", "Принт", "Исходник", "Набор"];
+  const categoryOptions: Array<{ key: CatalogCategory; label: string }> = [
+    { key: "all", label: "Все" },
+    { key: "digital", label: "Цифровые товары" },
+    { key: "accessories", label: "Аксессуары" },
+    { key: "merch", label: "Мерч" },
+  ];
   const visible = products.filter((product) => {
-    const matchesKind = kind === "Все" || product.type.startsWith(kind);
+    const matchesCategory = category === "all" || product.category === category;
     const matchesQuery = `${product.title} ${product.type}`.toLowerCase().includes(query.trim().toLowerCase());
-    return matchesKind && matchesQuery;
+    return matchesCategory && matchesQuery;
   });
 
-  return <section className="catalog-page"><p className="eyebrow">ЦИФРОВЫЕ ТОВАРЫ</p><h1>КАТАЛОГ</h1><label className="search"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по материалам" /><button type="button">ФИЛЬТРЫ</button></label><div className="chips">{kinds.map((item) => <button key={item} className={kind === item ? "chosen" : ""} onClick={() => setKind(item)}>{item === "Принт" ? "Принты" : item === "Исходник" ? "Исходники" : item === "Набор" ? "Наборы" : item}</button>)}</div><div className="catalog-count">НАЙДЕНО: {visible.length}</div>{visible.length > 0 ? <div className="product-grid">{visible.map((product) => <ProductCard key={product.id} product={product} onOpen={onOpen} favorite={favorites.includes(product.id)} onToggleFavorite={onToggleFavorite} />)}</div> : <div className="catalog-empty"><span>0</span><strong>НИЧЕГО НЕ НАЙДЕНО</strong><p>Измени запрос или сбрось категорию.</p><button onClick={() => { setQuery(""); setKind("Все"); }}>СБРОСИТЬ</button></div>}</section>;
+  return <section className="catalog-page"><h1>КАТАЛОГ</h1><label className="search"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по каталогу" /></label><div className="chips">{categoryOptions.map((item) => <button key={item.key} className={category === item.key ? "chosen" : ""} onClick={() => onCategory(item.key)}>{item.label}</button>)}</div>{visible.length > 0 ? <div className="product-grid">{visible.map((product) => <ProductCard key={product.id} product={product} onOpen={onOpen} favorite={favorites.includes(product.id)} onToggleFavorite={onToggleFavorite} />)}</div> : <div className="catalog-empty"><span>0</span><strong>НИЧЕГО НЕ НАЙДЕНО</strong><p>Измени поисковый запрос.</p><button onClick={() => setQuery("")}>СБРОСИТЬ</button></div>}</section>;
 }
 
 function EmptyState({ icon, title, copy }: { icon: string; title: string; copy: string }) { return <section className="empty"><div>{icon}</div><h1>{title}</h1><p>{copy}</p></section>; }
-function Profile({ purchaseCount, favoriteCount, telegramUser, onOpenFavorites, onSupport }: { purchaseCount: number; favoriteCount: number; telegramUser: TelegramUser | null; onOpenFavorites: () => void; onSupport: () => void }) { const displayName = telegramUser ? [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ") : "ГОСТЬ"; const initial = displayName.charAt(0).toUpperCase(); return <section className="profile"><p className="eyebrow">АККАУНТ</p><div className="avatar">{initial}</div><h1>{displayName}</h1>{telegramUser ? <p>{telegramUser.username ? `@${telegramUser.username}` : `Telegram ID ${telegramUser.id}`}</p> : <p>Откройте приложение через Telegram, чтобы синхронизировать покупки и избранное.</p>} {!telegramUser && <button className="profile-button">ОТКРЫТЬ В TELEGRAM ↗</button>}<div className="profile-stats"><div><strong>{purchaseCount}</strong><span>ПОКУПКИ</span></div><button onClick={onOpenFavorites}><strong>{favoriteCount}</strong><span>ИЗБРАННОЕ →</span></button></div><div className="profile-links"><button onClick={onSupport}>Поддержка <span>→</span></button><button>Условия использования <span>→</span></button></div></section>; }
+function Profile({ purchaseCount, favoriteCount, telegramUser, onAbout, onOpenFavorites, onSupport }: { purchaseCount: number; favoriteCount: number; telegramUser: TelegramUser | null; onAbout: () => void; onOpenFavorites: () => void; onSupport: () => void }) { const displayName = telegramUser ? [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ") : "ГОСТЬ"; const initial = displayName.charAt(0).toUpperCase(); return <section className="profile"><p className="eyebrow">АККАУНТ</p><div className="avatar">{initial}</div><h1>{displayName}</h1>{telegramUser ? <p>{telegramUser.username ? `@${telegramUser.username}` : `Telegram ID ${telegramUser.id}`}</p> : <p>Откройте приложение через Telegram, чтобы синхронизировать покупки и избранное.</p>} {!telegramUser && <button className="profile-button">ОТКРЫТЬ В TELEGRAM ↗</button>}<div className="profile-stats"><div><strong>{purchaseCount}</strong><span>ПОКУПКИ</span></div><button onClick={onOpenFavorites}><strong>{favoriteCount}</strong><span>ИЗБРАННОЕ →</span></button></div><div className="profile-links"><button onClick={onAbout}>О нас <span>→</span></button><button onClick={onSupport}>Поддержка <span>→</span></button><button>Условия использования <span>→</span></button></div></section>; }
 
 function Purchases({ items, onBrowse }: { items: CartItem[]; onBrowse: () => void }) {
   const [downloaded, setDownloaded] = useState<string[]>([]);
@@ -236,6 +258,10 @@ function Icon({ name }: { name: "search" | "bag" | "home" | "grid" | "download" 
     heart: <path d="M20.5 9c0 5-8.5 10-8.5 10S3.5 14 3.5 9A4.5 4.5 0 0 1 12 6.9 4.5 4.5 0 0 1 20.5 9Z" />,
   };
   return <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">{paths[name]}</svg>;
+}
+
+function AboutPage({ onClose }: { onClose: () => void }) {
+  return <div className="sheet-backdrop" role="region" aria-label="О компании"><article className="sheet info-sheet about-page"><div className="sheet-title"><p className="eyebrow">KITSUN / О КОМПАНИИ</p><button className="sheet-close" onClick={onClose} aria-label="Назад">×</button></div><h2>МАТЕРИАЛЫ<br />ДЛЯ ЗАПУСКА</h2><p className="about-lead">KITSUN помогает небольшим брендам, продавцам и производствам быстрее переходить от идеи к готовому продукту.</p><div className="about-visual"><span>EST. 2026</span><strong>KITSUN</strong><small>DESIGN → PRODUCTION</small></div><section className="about-copy"><p className="eyebrow">ЧТО МЫ ДЕЛАЕМ</p><p>Создаём готовые принты, исходники и производственные материалы. Иногда выпускаем аксессуары и небольшие тиражи собственного мерча.</p><p>Все продукты собраны так, чтобы их можно было быстро передать дизайнеру, типографии или производству и начать работу без лишних этапов.</p></section><div className="about-facts"><div><span>01</span><b>Готовые материалы</b><small>Для быстрого запуска продукта</small></div><div><span>02</span><b>Понятные файлы</b><small>Подготовленные к реальной работе</small></div><div><span>03</span><b>Связь напрямую</b><small>Без сложных форм и брифов</small></div></div><button className="manager-button" onClick={onClose}>ВЕРНУТЬСЯ →</button></article></div>;
 }
 
 function FavoritesSheet({ items, onClose, onRemove, onOpen }: { items: Product[]; onClose: () => void; onRemove: (id: string) => void; onOpen: (id: string) => void }) {
