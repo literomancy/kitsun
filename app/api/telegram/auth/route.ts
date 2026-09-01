@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createTelegramSession, verifyTelegramInitData, verifyTelegramSession } from "../../../../lib/telegram";
+import { recordTelegramUser } from "../../../../lib/catalog";
 
 export const runtime = "nodejs";
 const sessionCookie = "kitsun_telegram_session";
@@ -35,6 +36,12 @@ export async function POST(request: Request) {
   const user = verifyTelegramInitData(initData, botToken);
   if (!user) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  try {
+    await recordTelegramUser(user);
+  } catch (error) {
+    console.error("Failed to record Telegram user", error);
   }
 
   const response = NextResponse.json({ user });

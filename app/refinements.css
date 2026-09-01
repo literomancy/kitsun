@@ -1,0 +1,8 @@
+.hero{display:flex;min-height:390px!important;flex-direction:column;padding:32px 1px 22px!important}
+.hero h1{margin:48px 0 22px!important;line-height:.9!important}
+.hero-copy{margin:0!important;line-height:1.45!important}
+.hero .text-link{bottom:24px!important}
+.bottom-nav{grid-template-columns:repeat(3,1fr)!important}
+.profile-stats{grid-template-columns:1fr!important}
+.profile-stats>button{padding-left:0!important;border-left:0!important}
+.catalog-empty button{display:none}

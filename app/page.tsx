@@ -2,30 +2,27 @@
 
 import { useEffect, useState } from "react";
 import type { TelegramUser } from "../lib/telegram";
+import { defaultProducts, type CatalogProduct } from "../lib/catalog-data";
 
-type Tab = "Главная" | "Каталог" | "Покупки" | "Профиль";
-type CatalogCategory = "all" | "digital" | "accessories" | "merch";
-type Product = { id: string; title: string; type: string; category: CatalogCategory; price: string; color: "pink" | "blue" | "lime"; mark: string };
+type Tab = "Главная" | "Каталог" | "Профиль";
+type CatalogCategory = "all" | "clothing" | "cars" | "digital";
+type Product = CatalogProduct;
 type CartItem = Product & { unitPrice: number };
 
-const products: Product[] = [
-  { id: "01", title: "MELTED ORBIT", type: "Принт · PNG, PSD", category: "digital", price: "2 400 ₽", color: "pink", mark: "PRINT" },
-  { id: "02", title: "MOTOR STUDY", type: "Аксессуар · В наличии", category: "accessories", price: "3 200 ₽", color: "blue", mark: "OBJECT" },
-  { id: "03", title: "TERRAIN 004", type: "Мерч · Предзаказ", category: "merch", price: "1 800 ₽", color: "lime", mark: "DROP" },
-];
+const availabilityLabels = { in_stock: "В наличии", out_of_stock: "Нет в наличии", preorder: "Под заказ" } as const;
+const productMeta = (product: Product) => `${product.type.replace(/\s·\s(В наличии|Нет в наличии|Предзаказ|Под заказ)$/u, "")} · ${availabilityLabels[product.availability] || availabilityLabels.in_stock}`;
 
 const categories = [
-  ["01", "ЦИФРОВЫЕ\nТОВАРЫ", "Файлы для одежды и товаров", "digital"],
-  ["02", "АКСЕССУАРЫ", "Дополнения для вашего продукта", "accessories"],
-  ["03", "МЕРЧ", "Редкие дропы KITSUN", "merch"],
+  ["01", "ОДЕЖДА", "clothing"],
+  ["02", "АВТО", "cars"],
+  ["03", "ЦИФРОВЫЕ\nТОВАРЫ", "digital"],
 ] as const;
 
 export default function Home() {
+  const [products, setProducts] = useState<Product[]>([]);
+  const [productsLoading, setProductsLoading] = useState(true);
   const [tab, setTab] = useState<Tab>("Главная");
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [cartOpen, setCartOpen] = useState(false);
-  const [checkoutOpen, setCheckoutOpen] = useState(false);
-  const [purchases, setPurchases] = useState<CartItem[]>([]);
+  const [purchases] = useState<CartItem[]>([]);
   const [favorites, setFavorites] = useState<string[]>([]);
   const [favoritesOpen, setFavoritesOpen] = useState(false);
   const [customOrderOpen, setCustomOrderOpen] = useState(false);
@@ -36,15 +33,9 @@ export default function Home() {
   const [selected, setSelected] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  const addToCart = (product: Product, unitPrice: number) => {
-    if (cart.some((item) => item.id === product.id)) {
-      setNotice("Этот товар уже в корзине");
-      return;
-    }
-    setCart((items) => [...items, { ...product, unitPrice }]);
-    setNotice(`${product.title} добавлен в корзину`);
-    window.setTimeout(() => setNotice(null), 2200);
-  };
+  useEffect(() => {
+    fetch("/api/products").then((response) => response.ok ? response.json() : Promise.reject()).then((data: { products: Product[] }) => setProducts(data.products)).catch(() => setProducts(defaultProducts)).finally(() => setProductsLoading(false));
+  }, []);
 
   const toggleFavorite = (id: string) => {
     setFavorites((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
@@ -52,8 +43,6 @@ export default function Home() {
 
   const navigate = (nextTab: Tab) => {
     setSelected(null);
-    setCartOpen(false);
-    setCheckoutOpen(false);
     setFavoritesOpen(false);
     setCustomOrderOpen(false);
     setAboutOpen(false);
@@ -61,16 +50,7 @@ export default function Home() {
     setTab(nextTab);
   };
 
-  const openCart = () => {
-    setSelected(null);
-    setCheckoutOpen(false);
-    setFavoritesOpen(false);
-    setCustomOrderOpen(false);
-    setAboutOpen(false);
-    setCartOpen(true);
-  };
-
-  const hasInnerScreen = Boolean(selected || cartOpen || checkoutOpen || favoritesOpen || customOrderOpen || aboutOpen);
+  const hasInnerScreen = Boolean(selected || favoritesOpen || customOrderOpen || aboutOpen);
 
   useEffect(() => {
     let active = true;
@@ -93,9 +73,7 @@ export default function Home() {
         if (aboutOpen) setAboutOpen(false);
         else if (favoritesOpen) setFavoritesOpen(false);
         else if (customOrderOpen) setCustomOrderOpen(false);
-        else if (checkoutOpen) { setCheckoutOpen(false); setCartOpen(true); }
         else if (selected) setSelected(null);
-        else if (cartOpen) setCartOpen(false);
       };
 
       WebApp.ready();
@@ -122,7 +100,7 @@ export default function Home() {
       active = false;
       cleanup?.();
     };
-  }, [aboutOpen, cartOpen, checkoutOpen, customOrderOpen, favoritesOpen, hasInnerScreen, selected]);
+  }, [aboutOpen, customOrderOpen, favoritesOpen, hasInnerScreen, selected, telegramUser]);
 
   useEffect(() => {
     let active = true;
@@ -136,27 +114,17 @@ export default function Home() {
   useEffect(() => {
     window.scrollTo({ top: 0, left: 0, behavior: "auto" });
     document.querySelector<HTMLElement>(".sheet")?.scrollTo({ top: 0, left: 0, behavior: "auto" });
-  }, [aboutOpen, cartOpen, checkoutOpen, customOrderOpen, favoritesOpen, selected, tab]);
+  }, [aboutOpen, customOrderOpen, favoritesOpen, selected, tab]);
 
   if (selected) {
-    return <main className={`shell standalone-shell ${insideTelegram ? "telegram-native" : ""}`}><ProductSheet product={products.find((product) => product.id === selected)!} onClose={() => setSelected(null)} onAdd={addToCart} /><FloatingCart count={cart.length} onOpen={openCart} /><BottomNav tab="Каталог" onSelect={navigate} />{notice && <div className="toast" role="status">{notice}</div>}</main>;
-  }
-
-  if (cartOpen) {
-    return <main className={`shell standalone-shell ${insideTelegram ? "telegram-native" : ""}`}><CartSheet items={cart} onClose={() => setCartOpen(false)} onRemove={(id) => setCart((items) => items.filter((item) => item.id !== id))} onCheckout={() => { setCartOpen(false); setCheckoutOpen(true); }} /><FloatingCart count={cart.length} onOpen={openCart} active /><BottomNav tab={tab} onSelect={navigate} /></main>;
-  }
-
-  if (checkoutOpen) {
-    return <main className={`shell standalone-shell ${insideTelegram ? "telegram-native" : ""}`}><CheckoutSheet items={cart} onClose={() => { setCheckoutOpen(false); setCartOpen(true); }} onComplete={() => { setPurchases((current) => [...current, ...cart.filter((item) => !current.some((saved) => saved.id === item.id))]); setCart([]); }} onViewPurchases={() => { setCheckoutOpen(false); setTab("Покупки"); }} /><FloatingCart count={cart.length} onOpen={openCart} /></main>;
+    return <main className={`shell standalone-shell ${insideTelegram ? "telegram-native" : ""}`}><ProductSheet product={products.find((product) => product.id === selected)!} onClose={() => setSelected(null)} onContact={() => window.open("https://t.me/Kitsunshop", "_blank", "noopener,noreferrer")} /><BottomNav tab="Каталог" onSelect={navigate} />{notice && <div className="toast" role="status">{notice}</div>}</main>;
   }
 
   return (
     <main className={`shell ${insideTelegram ? "telegram-native" : ""}`}>
       {tab === "Главная" && <header className="header">
-        <a className="wordmark" href="#top" aria-label="KITSUN, главная">KITSUN<span>®</span></a>
+        <a className="wordmark" href="#top" aria-label="KITSUN NO STORE, главная">KITSUN NO STORE</a>
       </header>}
-
-      <FloatingCart count={cart.length} onOpen={openCart} />
 
       {tab === "Главная" && <>
         <section className="hero" id="top">
@@ -167,11 +135,10 @@ export default function Home() {
         </section>
 
         <section className="category-list" aria-label="Разделы магазина">
-          {categories.map(([number, title, description, category]) => (
+          {categories.map(([number, title, category]) => (
             <button key={number} className="category" onClick={() => { setCatalogCategory(category); setTab("Каталог"); }}>
               <small>{number}</small>
               <strong>{title.split("\n").map((part) => <span key={part}>{part}</span>)}</strong>
-              <span className="category-description">{description}</span>
               <b>↗</b>
             </button>
           ))}
@@ -180,21 +147,20 @@ export default function Home() {
         <section className="section" id="catalog">
           <div className="section-head"><p>НОВОЕ В КАТАЛОГЕ</p><button onClick={() => { setCatalogCategory("all"); setTab("Каталог"); }}>ВСЁ →</button></div>
           <div className="product-grid">
-            {products.map((product) => <ProductCard key={product.id} product={product} onOpen={setSelected} favorite={favorites.includes(product.id)} onToggleFavorite={toggleFavorite} />)}
+            {productsLoading ? <ProductSkeletons /> : products.map((product) => <ProductCard key={product.id} product={product} onOpen={setSelected} favorite={favorites.includes(product.id)} onToggleFavorite={toggleFavorite} />)}
           </div>
         </section>
 
         <section className="custom-order">
           <p className="eyebrow">НУЖЕН СВОЙ ПРОЕКТ?</p>
-          <h2>Индивидуальный<br />заказ <span>↗</span></h2>
-          <p>От концепта до готового файла для производства.</p>
-          <button onClick={() => setCustomOrderOpen(true)}>ОБСУДИТЬ</button>
+          <h2>Индивидуальный<br />заказ</h2>
+          <p>От концепта до производства.</p>
+          <button onClick={() => window.open("https://t.me/Kitsunshop", "_blank", "noopener,noreferrer")}>ОБСУДИТЬ</button>
         </section>
       </>}
 
-      {tab === "Каталог" && <Catalog products={products} category={catalogCategory} onCategory={setCatalogCategory} onOpen={setSelected} favorites={favorites} onToggleFavorite={toggleFavorite} />}
-      {tab === "Покупки" && <Purchases items={purchases} onBrowse={() => setTab("Каталог")} />}
-      {tab === "Профиль" && <Profile purchaseCount={purchases.length} favoriteCount={favorites.length} telegramUser={telegramUser} onAbout={() => setAboutOpen(true)} onOpenFavorites={() => setFavoritesOpen(true)} onSupport={() => setNotice("Откроем чат поддержки в Telegram")} />}
+      {tab === "Каталог" && <Catalog products={products} loading={productsLoading} category={catalogCategory} onCategory={setCatalogCategory} onOpen={setSelected} favorites={favorites} onToggleFavorite={toggleFavorite} />}
+      {tab === "Профиль" && <Profile purchaseCount={purchases.length} favoriteCount={favorites.length} telegramUser={telegramUser} onAbout={() => setAboutOpen(true)} onOpenFavorites={() => setFavoritesOpen(true)} onSupport={() => window.open("https://t.me/Kitsunshop", "_blank", "noopener,noreferrer")} />}
 
       <BottomNav tab={tab} onSelect={navigate} />
 
@@ -207,27 +173,26 @@ export default function Home() {
 }
 
 function BottomNav({ tab, onSelect }: { tab: Tab; onSelect: (tab: Tab) => void }) {
-  return <nav className="bottom-nav" aria-label="Основная навигация">{(["Главная", "Каталог", "Покупки", "Профиль"] as Tab[]).map((item, index) => <button key={item} className={tab === item ? "active" : ""} onClick={() => onSelect(item)}><span><Icon name={(["home", "grid", "download", "user"] as const)[index]} /></span>{item}</button>)}</nav>;
-}
-
-function FloatingCart({ count, onOpen, active = false }: { count: number; onOpen: () => void; active?: boolean }) {
-  return <button className={`floating-cart ${active ? "active" : ""}`} aria-label={`Корзина, товаров: ${count}`} onClick={onOpen}><Icon name="bag" />{count > 0 && <i>{count}</i>}</button>;
+  return <nav className="bottom-nav" aria-label="Основная навигация">{(["Главная", "Каталог", "Профиль"] as Tab[]).map((item, index) => <button key={item} className={tab === item ? "active" : ""} onClick={() => onSelect(item)}><span><Icon name={(["home", "grid", "user"] as const)[index]} /></span>{item}</button>)}</nav>;
 }
 
 function ProductCard({ product, onOpen, favorite, onToggleFavorite }: { product: Product; onOpen: (id: string) => void; favorite: boolean; onToggleFavorite: (id: string) => void }) {
+  const cover = product.gallery.find((image) => image.src)?.src;
   return <article className="product">
-    <button className="product-open" onClick={() => onOpen(product.id)}><div className={`product-art ${product.color}`}><span>{product.id}</span><b>{product.mark}</b><i>↗</i></div><strong>{product.title}</strong><small>{product.type}</small><span>{product.price}</span></button>
+    <button className="product-open" onClick={() => onOpen(product.id)}><div className={`product-art ${product.color} ${cover ? "with-image" : "empty-art"}`}>{cover ? <img src={cover} alt={product.title} /> : product.mark && <b>{product.mark}</b>}<i>↗</i></div><strong>{product.title}</strong><small>{productMeta(product)}</small><span>{product.price}</span></button>
     <button className={`favorite-button ${favorite ? "saved" : ""}`} aria-label={favorite ? `Убрать ${product.title} из избранного` : `Добавить ${product.title} в избранное`} onClick={() => onToggleFavorite(product.id)}><Icon name="heart" /></button>
   </article>;
 }
 
-function Catalog({ products, category, onCategory, onOpen, favorites, onToggleFavorite }: { products: Product[]; category: CatalogCategory; onCategory: (category: CatalogCategory) => void; onOpen: (id: string) => void; favorites: string[]; onToggleFavorite: (id: string) => void }) {
+function ProductSkeletons() { return <>{[1, 2, 3, 4].map((item) => <div className="product-skeleton" key={item}><i /><b /><span /></div>)}</>; }
+
+function Catalog({ products, loading, category, onCategory, onOpen, favorites, onToggleFavorite }: { products: Product[]; loading: boolean; category: CatalogCategory; onCategory: (category: CatalogCategory) => void; onOpen: (id: string) => void; favorites: string[]; onToggleFavorite: (id: string) => void }) {
   const [query, setQuery] = useState("");
   const categoryOptions: Array<{ key: CatalogCategory; label: string }> = [
     { key: "all", label: "Все" },
+    { key: "clothing", label: "Одежда" },
+    { key: "cars", label: "Авто" },
     { key: "digital", label: "Цифровые товары" },
-    { key: "accessories", label: "Аксессуары" },
-    { key: "merch", label: "Мерч" },
   ];
   const visible = products.filter((product) => {
     const matchesCategory = category === "all" || product.category === category;
@@ -235,11 +200,11 @@ function Catalog({ products, category, onCategory, onOpen, favorites, onToggleFa
     return matchesCategory && matchesQuery;
   });
 
-  return <section className="catalog-page"><h1>КАТАЛОГ</h1><label className="search"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по каталогу" /></label><div className="chips">{categoryOptions.map((item) => <button key={item.key} className={category === item.key ? "chosen" : ""} onClick={() => onCategory(item.key)}>{item.label}</button>)}</div>{visible.length > 0 ? <div className="product-grid">{visible.map((product) => <ProductCard key={product.id} product={product} onOpen={onOpen} favorite={favorites.includes(product.id)} onToggleFavorite={onToggleFavorite} />)}</div> : <div className="catalog-empty"><span>0</span><strong>НИЧЕГО НЕ НАЙДЕНО</strong><p>Измени поисковый запрос.</p><button onClick={() => setQuery("")}>СБРОСИТЬ</button></div>}</section>;
+  return <section className="catalog-page"><h1>КАТАЛОГ</h1><label className="search"><Icon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Поиск по каталогу" /></label><div className="chips">{categoryOptions.map((item) => <button key={item.key} className={category === item.key ? "chosen" : ""} onClick={() => onCategory(item.key)}>{item.label}</button>)}</div>{loading ? <div className="product-grid"><ProductSkeletons /></div> : visible.length > 0 ? <div className="product-grid">{visible.map((product) => <ProductCard key={product.id} product={product} onOpen={onOpen} favorite={favorites.includes(product.id)} onToggleFavorite={onToggleFavorite} />)}</div> : <div className="catalog-empty"><span>0</span><strong>НИЧЕГО НЕ НАЙДЕНО</strong><p>Измени поисковый запрос.</p><button onClick={() => setQuery("")}>СБРОСИТЬ</button></div>}</section>;
 }
 
 function EmptyState({ icon, title, copy }: { icon: string; title: string; copy: string }) { return <section className="empty"><div>{icon}</div><h1>{title}</h1><p>{copy}</p></section>; }
-function Profile({ purchaseCount, favoriteCount, telegramUser, onAbout, onOpenFavorites, onSupport }: { purchaseCount: number; favoriteCount: number; telegramUser: TelegramUser | null; onAbout: () => void; onOpenFavorites: () => void; onSupport: () => void }) { const displayName = telegramUser ? [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ") : "ГОСТЬ"; const initial = displayName.charAt(0).toUpperCase(); return <section className="profile"><p className="eyebrow">АККАУНТ</p><div className="avatar">{initial}</div><h1>{displayName}</h1>{telegramUser ? <p>{telegramUser.username ? `@${telegramUser.username}` : `Telegram ID ${telegramUser.id}`}</p> : <p>Откройте приложение через Telegram, чтобы синхронизировать покупки и избранное.</p>} {!telegramUser && <button className="profile-button">ОТКРЫТЬ В TELEGRAM ↗</button>}<div className="profile-stats"><div><strong>{purchaseCount}</strong><span>ПОКУПКИ</span></div><button onClick={onOpenFavorites}><strong>{favoriteCount}</strong><span>ИЗБРАННОЕ →</span></button></div><div className="profile-links"><button onClick={onAbout}>О нас <span>→</span></button><button onClick={onSupport}>Поддержка <span>→</span></button><button>Условия использования <span>→</span></button></div></section>; }
+function Profile({ favoriteCount, telegramUser, onAbout, onOpenFavorites, onSupport }: { purchaseCount: number; favoriteCount: number; telegramUser: TelegramUser | null; onAbout: () => void; onOpenFavorites: () => void; onSupport: () => void }) { const displayName = telegramUser ? [telegramUser.first_name, telegramUser.last_name].filter(Boolean).join(" ") : "ГОСТЬ"; const initial = displayName.charAt(0).toUpperCase(); return <section className="profile"><p className="eyebrow">АККАУНТ</p><div className="avatar">{initial}</div><h1>{displayName}</h1>{telegramUser ? <p>{telegramUser.username ? `@${telegramUser.username}` : `Telegram ID ${telegramUser.id}`}</p> : <p>Откройте приложение через Telegram, чтобы синхронизировать покупки и избранное.</p>}<div className="profile-stats"><button onClick={onOpenFavorites}><strong>{favoriteCount}</strong><span>ИЗБРАННОЕ →</span></button></div><div className="profile-links"><button onClick={onAbout}>О нас <span>→</span></button><button onClick={onSupport}>Поддержка <span>→</span></button><button onClick={() => window.open("https://t.me/kitsunworldwide", "_blank", "noopener,noreferrer")}>Сообщество <span>→</span></button></div></section>; }
 
 function Purchases({ items, onBrowse }: { items: CartItem[]; onBrowse: () => void }) {
   const [downloaded, setDownloaded] = useState<string[]>([]);
@@ -261,7 +226,8 @@ function Icon({ name }: { name: "search" | "bag" | "home" | "grid" | "download" 
 }
 
 function AboutPage({ onClose }: { onClose: () => void }) {
-  return <div className="sheet-backdrop" role="region" aria-label="О компании"><article className="sheet info-sheet about-page"><div className="sheet-title"><p className="eyebrow">KITSUN / О КОМПАНИИ</p><button className="sheet-close" onClick={onClose} aria-label="Назад">×</button></div><h2>МАТЕРИАЛЫ<br />ДЛЯ ЗАПУСКА</h2><p className="about-lead">KITSUN помогает небольшим брендам, продавцам и производствам быстрее переходить от идеи к готовому продукту.</p><div className="about-visual"><span>EST. 2026</span><strong>KITSUN</strong><small>DESIGN → PRODUCTION</small></div><section className="about-copy"><p className="eyebrow">ЧТО МЫ ДЕЛАЕМ</p><p>Создаём готовые принты, исходники и производственные материалы. Иногда выпускаем аксессуары и небольшие тиражи собственного мерча.</p><p>Все продукты собраны так, чтобы их можно было быстро передать дизайнеру, типографии или производству и начать работу без лишних этапов.</p></section><div className="about-facts"><div><span>01</span><b>Готовые материалы</b><small>Для быстрого запуска продукта</small></div><div><span>02</span><b>Понятные файлы</b><small>Подготовленные к реальной работе</small></div><div><span>03</span><b>Связь напрямую</b><small>Без сложных форм и брифов</small></div></div><button className="manager-button" onClick={onClose}>ВЕРНУТЬСЯ →</button></article></div>;
+  const partners = ["Porsche Ride", "VCNC", "RACEBRO", "TEAM GARIS"];
+  return <div className="sheet-backdrop" role="region" aria-label="О компании"><article className="sheet info-sheet about-page"><div className="sheet-title"><p className="eyebrow">KITSUN / О КОМПАНИИ</p><button className="sheet-close" onClick={onClose} aria-label="Назад">×</button></div><h2>МАТЕРИАЛЫ<br />ДЛЯ ЗАПУСКА</h2><p className="about-lead">KITSUN помогает небольшим брендам, продавцам и производствам быстрее переходить от идеи к готовому продукту.</p><div className="about-visual"><strong>KITSUN</strong><small>DESIGN → PRODUCTION</small></div><section className="about-copy"><p className="eyebrow">ЧТО МЫ ДЕЛАЕМ</p><p>Создаём готовые принты, исходники и производственные материалы. Иногда выпускаем аксессуары и небольшие тиражи собственного мерча.</p><p>Все продукты собраны так, чтобы их можно было быстро передать дизайнеру, типографии или производству и начать работу без лишних этапов.</p></section><div className="about-facts"><div><span>01</span><b>Готовые материалы</b><small>Для быстрого запуска продукта</small></div><div><span>02</span><b>Понятные файлы</b><small>Подготовленные к реальной работе</small></div><div><span>03</span><b>Связь напрямую</b><small>Без сложных форм и брифов</small></div></div><section className="partners"><p className="eyebrow">ПАРТНЁРЫ</p><div>{partners.map((partner) => <span key={partner}>{partner}</span>)}</div></section><button className="manager-button" onClick={() => window.open("https://t.me/Kitsunshop", "_blank", "noopener,noreferrer")}>СВЯЗАТЬСЯ ↗</button></article></div>;
 }
 
 function FavoritesSheet({ items, onClose, onRemove, onOpen }: { items: Product[]; onClose: () => void; onRemove: (id: string) => void; onOpen: (id: string) => void }) {
@@ -272,9 +238,16 @@ function CustomOrderSheet({ onClose, onContact }: { onClose: () => void; onConta
   return <div className="sheet-backdrop" role="dialog" aria-modal="true" aria-label="Индивидуальный заказ" onClick={onClose}><article className="sheet info-sheet" onClick={(event) => event.stopPropagation()}><div className="sheet-title"><p className="eyebrow">KITSUN / CUSTOM</p><button className="sheet-close" onClick={onClose} aria-label="Закрыть">×</button></div><h2>СВОЙ ПРОЕКТ</h2><p className="info-lead">Разработаем графику под конкретный товар, производство и площадку.</p><div className="lookbook"><div>TYPE / 01<strong>APPAREL</strong></div><div>TYPE / 02<strong>OBJECT</strong></div><div>TYPE / 03<strong>PACK</strong></div></div><div className="service-list"><div><span>01</span><p><b>Бриф</b><small>Задача, продукт и ограничения производства</small></p></div><div><span>02</span><p><b>Концепция</b><small>Направление и первый визуальный вариант</small></p></div><div><span>03</span><p><b>Подготовка</b><small>Исходники и файлы под выпуск тиража</small></p></div></div><div className="service-meta"><div><small>СРОК</small><b>от 7 дней</b></div><div><small>СТОИМОСТЬ</small><b>после брифа</b></div></div><button className="manager-button" onClick={() => { onContact(); onClose(); }}>НАПИСАТЬ МЕНЕДЖЕРУ ↗</button></article></div>;
 }
 
-function ProductSheet({ product, onClose, onAdd }: { product: Product; onClose: () => void; onAdd: (product: Product, unitPrice: number) => void }) {
-  const unitPrice = Number(product.price.replace(/\D/g, ""));
-  return <div className="sheet-backdrop page-backdrop" role="region" aria-label={product.title}><article className="sheet product-sheet"><div className="page-topbar"><button onClick={onClose}>← НАЗАД</button><span>KITSUN®</span></div><div className={`sheet-art ${product.color}`}><span>{product.id} / KITSUN</span><b>{product.title}</b></div><p className="eyebrow">ЦИФРОВОЙ МАТЕРИАЛ</p><h2>{product.title}</h2><p className="sheet-copy">Готовый дизайн-файл для одежды, товаров и коммерческих проектов.</p><div className="spec"><span>В КОМПЛЕКТЕ</span><b>4 файла · инструкция</b></div><div className="spec"><span>ФОРМАТЫ</span><b>AI · SVG · PNG · PDF</b></div><section className="usage-block"><p className="eyebrow">ПОДХОДИТ ДЛЯ</p><div><span>ОДЕЖДА</span><span>МАРКЕТПЛЕЙСЫ</span><span>ПЕЧАТЬ</span></div><p>Макет можно редактировать, перекрашивать и адаптировать под выбранный носитель.</p></section><section className="instruction-block"><p className="eyebrow">КАК ЭТО РАБОТАЕТ</p><ol><li><span>01</span>Оплати заказ</li><li><span>02</span>Скачай архив в покупках</li><li><span>03</span>Передай файл в производство</li></ol></section><footer><strong>{unitPrice.toLocaleString("ru-RU")} ₽</strong><button onClick={() => { onAdd(product, unitPrice); onClose(); }}>В КОРЗИНУ</button></footer></article></div>;
+function ProductSheet({ product, onClose, onContact }: { product: Product; onClose: () => void; onContact: () => void }) {
+  const [slide, setSlide] = useState(0);
+  const gallery = product.gallery.filter((image) => image.src);
+  if (gallery.length === 0) gallery.push({ label: "" });
+  const totalSlides = gallery.length;
+  const currentSlide = gallery[slide];
+  const setSlideInRange = (next: number) => setSlide((next + totalSlides) % totalSlides);
+  const layouts = { clothing: { eyebrow: "ОДЕЖДА / KITSUN" }, cars: { eyebrow: "АВТО / KITSUN" }, digital: { eyebrow: "ЦИФРОВОЙ ТОВАР" } } as const;
+  const layout = layouts[product.category];
+  return <div className="sheet-backdrop page-backdrop" role="region" aria-label={product.title}><article className={`sheet product-sheet product-sheet-${product.category}`}><div className="page-topbar"><button onClick={onClose}>← НАЗАД</button><span>KITSUN NO STORE</span></div><section className={`product-carousel ${product.color}`} aria-label={`Галерея ${product.title}`}>{currentSlide.src ? <img className="product-carousel-image" src={currentSlide.src} alt={product.title} /> : <div className="product-carousel-art" />}{totalSlides > 1 && <><button className="carousel-control previous" onClick={() => setSlideInRange(slide - 1)} aria-label="Предыдущее фото">←</button><button className="carousel-control next" onClick={() => setSlideInRange(slide + 1)} aria-label="Следующее фото">→</button><div className="carousel-dots" aria-label={`Фото ${slide + 1} из ${totalSlides}`}>{gallery.map((image, index) => <button key={`${image.label}-${index}`} className={index === slide ? "active" : ""} onClick={() => setSlide(index)} aria-label={`Фото ${index + 1}`} />)}</div></>}</section><p className="eyebrow">{layout.eyebrow} · {availabilityLabels[product.availability] || availabilityLabels.in_stock}</p><h2>{product.title}</h2><p className="sheet-copy">{product.description}</p>{product.details.length > 0 && <section className="product-specs">{product.details.map((detail, index) => <div key={`${detail.label}-${index}`}><span>{detail.label}</span><b>{detail.value}</b></div>)}</section>}<footer><strong>{product.price}</strong><button onClick={onContact}>СВЯЗАТЬСЯ ↗</button></footer></article></div>;
 }
 
 function CartSheet({ items, onClose, onRemove, onCheckout }: { items: CartItem[]; onClose: () => void; onRemove: (id: string) => void; onCheckout: () => void }) {

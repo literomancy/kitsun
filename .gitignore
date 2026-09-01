@@ -3,6 +3,7 @@ node_modules/
 
 # Next.js
 .next/
+.next-dev/
 out/
 
 # build and caches
@@ -24,3 +25,6 @@ pnpm-debug.log*
 .idea/
 .vscode/
 .vercel
+
+.env*
+!.env.example
