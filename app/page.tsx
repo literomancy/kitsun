@@ -11,6 +11,7 @@ type CartItem = Product & { unitPrice: number };
 
 const availabilityLabels = { in_stock: "В наличии", out_of_stock: "Нет в наличии", preorder: "Под заказ" } as const;
 const productMeta = (product: Product) => `${product.type.replace(/\s·\s(В наличии|Нет в наличии|Предзаказ|Под заказ)$/u, "")} · ${availabilityLabels[product.availability] || availabilityLabels.in_stock}`;
+const telegramChromeColor = "#f5f5f0";
 
 const categories = [
   ["01", "ОДЕЖДА", "clothing"],
@@ -63,10 +64,10 @@ export default function Home() {
       if (!isTelegram) return;
 
       document.documentElement.classList.add("telegram-app");
-      WebApp.setHeaderColor("#ffffff");
-      WebApp.setBackgroundColor("#ffffff");
+      WebApp.setHeaderColor(telegramChromeColor);
+      WebApp.setBackgroundColor(telegramChromeColor);
       if ("setBottomBarColor" in WebApp && typeof WebApp.setBottomBarColor === "function") {
-        WebApp.setBottomBarColor("#ffffff");
+        WebApp.setBottomBarColor(telegramChromeColor);
       }
 
       const goBack = () => {
