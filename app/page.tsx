@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { TelegramUser } from "../lib/telegram";
 import { defaultProducts, type CatalogProduct } from "../lib/catalog-data";
 
@@ -241,14 +241,27 @@ function CustomOrderSheet({ onClose, onContact }: { onClose: () => void; onConta
 
 function ProductSheet({ product, onClose, onContact }: { product: Product; onClose: () => void; onContact: () => void }) {
   const [slide, setSlide] = useState(0);
+  const touchStart = useRef({ x: 0, y: 0 });
   const gallery = product.gallery.filter((image) => image.src);
   if (gallery.length === 0) gallery.push({ label: "" });
   const totalSlides = gallery.length;
   const currentSlide = gallery[slide];
   const setSlideInRange = (next: number) => setSlide((next + totalSlides) % totalSlides);
+  const handleTouchStart = (event: React.TouchEvent<HTMLElement>) => {
+    const touch = event.touches[0];
+    touchStart.current = { x: touch.clientX, y: touch.clientY };
+  };
+  const handleTouchEnd = (event: React.TouchEvent<HTMLElement>) => {
+    if (totalSlides < 2) return;
+    const touch = event.changedTouches[0];
+    const deltaX = touch.clientX - touchStart.current.x;
+    const deltaY = touch.clientY - touchStart.current.y;
+    if (Math.abs(deltaX) < 45 || Math.abs(deltaX) <= Math.abs(deltaY)) return;
+    setSlideInRange(slide + (deltaX < 0 ? 1 : -1));
+  };
   const layouts = { clothing: { eyebrow: "ОДЕЖДА / KITSUN" }, cars: { eyebrow: "АВТО / KITSUN" }, digital: { eyebrow: "ЦИФРОВОЙ ТОВАР" } } as const;
   const layout = layouts[product.category];
-  return <div className="sheet-backdrop page-backdrop" role="region" aria-label={product.title}><article className={`sheet product-sheet product-sheet-${product.category}`}><div className="page-topbar"><button onClick={onClose}>← НАЗАД</button><span>KITSUN NO STORE</span></div><section className={`product-carousel ${product.color}`} aria-label={`Галерея ${product.title}`}>{currentSlide.src ? <img className="product-carousel-image" src={currentSlide.src} alt={product.title} /> : <div className="product-carousel-art" />}{totalSlides > 1 && <><button className="carousel-control previous" onClick={() => setSlideInRange(slide - 1)} aria-label="Предыдущее фото">←</button><button className="carousel-control next" onClick={() => setSlideInRange(slide + 1)} aria-label="Следующее фото">→</button><div className="carousel-dots" aria-label={`Фото ${slide + 1} из ${totalSlides}`}>{gallery.map((image, index) => <button key={`${image.label}-${index}`} className={index === slide ? "active" : ""} onClick={() => setSlide(index)} aria-label={`Фото ${index + 1}`} />)}</div></>}</section><p className="eyebrow">{layout.eyebrow} · {availabilityLabels[product.availability] || availabilityLabels.in_stock}</p><h2>{product.title}</h2><p className="sheet-copy">{product.description}</p>{product.details.length > 0 && <section className="product-specs">{product.details.map((detail, index) => <div key={`${detail.label}-${index}`}><span>{detail.label}</span><b>{detail.value}</b></div>)}</section>}<footer><strong>{product.price}</strong><button onClick={onContact}>СВЯЗАТЬСЯ ↗</button></footer></article></div>;
+  return <div className="sheet-backdrop page-backdrop" role="region" aria-label={product.title}><article className={`sheet product-sheet product-sheet-${product.category}`}><div className="page-topbar"><button onClick={onClose}>← НАЗАД</button><span>KITSUN NO STORE</span></div><section className={`product-carousel ${product.color}`} aria-label={`Галерея ${product.title}`} onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>{currentSlide.src ? <img className="product-carousel-image" src={currentSlide.src} alt={product.title} draggable={false} /> : <div className="product-carousel-art" />}{totalSlides > 1 && <><button className="carousel-control previous" onClick={() => setSlideInRange(slide - 1)} aria-label="Предыдущее фото">←</button><button className="carousel-control next" onClick={() => setSlideInRange(slide + 1)} aria-label="Следующее фото">→</button><div className="carousel-dots" aria-label={`Фото ${slide + 1} из ${totalSlides}`}>{gallery.map((image, index) => <button key={`${image.label}-${index}`} className={index === slide ? "active" : ""} onClick={() => setSlide(index)} aria-label={`Фото ${index + 1}`} />)}</div></>}</section><p className="eyebrow">{layout.eyebrow} · {availabilityLabels[product.availability] || availabilityLabels.in_stock}</p><h2>{product.title}</h2><p className="sheet-copy">{product.description}</p>{product.details.length > 0 && <section className="product-specs">{product.details.map((detail, index) => <div key={`${detail.label}-${index}`}><span>{detail.label}</span><b>{detail.value}</b></div>)}</section>}<footer><strong>{product.price}</strong><button onClick={onContact}>СВЯЗАТЬСЯ ↗</button></footer></article></div>;
 }
 
 function CartSheet({ items, onClose, onRemove, onCheckout }: { items: CartItem[]; onClose: () => void; onRemove: (id: string) => void; onCheckout: () => void }) {

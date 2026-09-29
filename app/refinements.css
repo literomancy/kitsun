@@ -6,3 +6,4 @@
 .profile-stats{grid-template-columns:1fr!important}
 .profile-stats>button{padding-left:0!important;border-left:0!important}
 .catalog-empty button{display:none}
+.product-carousel{touch-action:pan-y;user-select:none;-webkit-user-select:none}
