@@ -35,6 +35,18 @@ export default function Home() {
   const [notice, setNotice] = useState<string | null>(null);
 
   useEffect(() => {
+    import("@twa-dev/sdk")
+      .then(({ default: WebApp }) => fetch("/api/analytics/visit", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ source: WebApp.initData ? "telegram" : "web" }),
+        credentials: "same-origin",
+        keepalive: true,
+      }))
+      .catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
     fetch("/api/products").then((response) => response.ok ? response.json() : Promise.reject()).then((data: { products: Product[] }) => setProducts(data.products)).catch(() => setProducts(defaultProducts)).finally(() => setProductsLoading(false));
   }, []);
 
